@@ -15,13 +15,13 @@ Drupal.behaviors.jwplayer = function(context) {
       $player = jwplayer(field).setup(config[field]);
       // Is error logging enabled?
       if (Drupal.settings.jwplayer.error_log && Drupal.settings.ajaxlog.key && Drupal.settings.ajaxlog.token) {
-        $player.onError(Drupal.jwplayer.JWPlayerLog);
+        $player.onError(Drupal.jwplayer.logErrors);
       }
     }
   }
 }
 
 Drupal.jwplayer = {};
-Drupal.jwplayer.JWPlayerLog = function(e) {
+Drupal.jwplayer.logErrors = function(e) {
   Drupal.ajaxlog('jwplayer', e.message);
 }

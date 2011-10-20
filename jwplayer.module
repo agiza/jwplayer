@@ -5,6 +5,21 @@
  */
 
 /**
+ * Implements hook_menu().
+ */
+function jwplayer_menu() {
+  $items = array();
+  $items['admin/settings/jwplayer'] = array(
+    'title' => 'JWPLayer Settings',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('jwplayer_settings_form'),
+    'access arguments' => array('administer site configuration'),
+    'file' => 'includes/jwplayer.admin.inc',
+  );
+  return $items;
+}
+
+/**
  * Implements hook_field_formatter_info().
  */
 function jwplayer_field_formatter_info() {
@@ -21,6 +36,9 @@ function jwplayer_field_formatter_info() {
  */
 function jwplayer_theme() {
   return array(
+    'jwplayer' => array(
+      'arguments' => array('player_id' => NULL, 'config' => NULL),
+    ),
     'jwplayer_formatter_jwplayer' => array(
       'arguments' => array('element' => NULL)
     ),
@@ -28,56 +46,76 @@ function jwplayer_theme() {
 }
 
 /**
- * Theme function; Convert integers to their full text representation.
+ * Implements hook_views_api().
+ */
+function jwplayer_views_api() {
+  return array(
+    'api' => 2,
+    'path' => drupal_get_path('module', 'jwplayer') . '/includes',
+  );
+}
+
+/**
+ * Theme function; Format a filefield using JWPlayer.
+ *
+ * !todo: This should handle multiple value fields by using the jwplayer
+ * playlist functionality.
  */
 function theme_jwplayer_formatter_jwplayer($element) {
   if (!isset($element['#item']['filepath'])) {
     return '';
   }
 
-  // Build the jwplayer configuration array. And then use it to add the
-  // necessary javascript to the page. Done in two steps to make it easier for
-  // a theme to add additional configuration for JWPlayer.
-  $config = jwplayer_player_config($element);
+  // Build the JWPlayer configuration array.
   $file_url = file_create_url($element['#item']['filepath']);
   $config['file'] = $file_url;
+  $config = jwplayer_player_config($config, $element);
 
-  jwplayer_add_player($element, $config);
-  $output = '<video id="'. $element['#field_name'] . '_player" src="' . $file_url . '" controls="controls" height="' . $config['height'] . '" width="' . $config['width'] . '"></video>';
+  $output = theme('jwplayer', $element['#field_name'] . '_player', $config);
   return $output;
 }
 
 /**
  * Add the javascript necessary for embedding the JWPlayer onto the page.
  *
- * @param $element
- *   The CCK/filefield element.
+ * @param $player_id
+ *   Unique DOM ID for the player.
  * @param $config
  *   An associative array of containing data to be passed to the jwplayer()
  *   javascript method as configuration parameters.
  */
-function jwplayer_add_player($element, $config) {
+function jwplayer_add_player_js($player_id, $config) {
   drupal_add_js(drupal_get_path('module', 'jwplayer') . '/jwplayer/jwplayer.js');
   drupal_add_js(drupal_get_path('module', 'jwplayer') . '/jwplayer_behaviors.js');
 
   // Convert $config array to Drupal.settings variables.
   $config = array(
     'jwplayer' => array(
-      $element['#field_name'] . '_player' => $config,
-      // @todo - add error logging with ajaxlog module.
-      //'error_log' => variable_get('cloudfrontvideo_error_log_enabled', TRUE),
+      $player_id => $config,
+      'error_log' => variable_get('jwplayer_error_log_enabled', FALSE),
     ),
   );
   drupal_add_js($config, 'setting');
 }
 
 /**
+ *
+ */
+function theme_jwplayer($player_id, $config) {
+  // Javascript is added by this helper function within the theme function so
+  // that it's easier for themes to make changes to the $config array before
+  // adding the player to the page.
+  jwplayer_add_player_js($player_id, $config);
+  return '<video id="'. $player_id . '" class="jwplayer-player" src="' . $config['file'] . '" controls="controls" height="' . $config['height'] . '" width="' . $config['width'] . '"></video>';
+}
+
+/**
  * Helper function to build a $config array for JWPlayer.
  */
-function jwplayer_player_config($element) {
+function jwplayer_player_config($config, $object = NULL) {
   // Setup some sane defaults. These can be overriden by another module using
   // hook_jwplayer_config_alter(&$config).
-  $config = array(
+  $config_defaults = array(
     'flashplayer' => url(drupal_get_path('module', 'jwplayer')  . '/jwplayer/player.swf', array('absolute' => TRUE)),
     'bufferlength' => 10,
     // @todo: these should be configurable
@@ -86,8 +124,10 @@ function jwplayer_player_config($element) {
     'stretching' => 'fill',
   );
 
+  $config = array_merge($config_defaults, $config);
+
   // Allow other modules to alter the $config array.
-  drupal_alter('jwplayer_config', $config, $element);
+  drupal_alter('jwplayer_config', $config, $object);
 
   return $config;
 }
